@@ -4,6 +4,7 @@ import Calendar from '../components/Calendar'
 import TimeSlots from '../components/TimeSlots'
 import BookingForm from '../components/BookingForm'
 import './AgendarCita.css'
+import emailjs from '@emailjs/browser'
 
 function AgendarCita() {
     const navigate = useNavigate()
@@ -28,38 +29,39 @@ function AgendarCita() {
         setIsSubmitting(true)
 
         try {
-            const response = await fetch('http://localhost:3001/api/send-email', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    ...formData,
-                    date: selectedDate.toLocaleDateString('es-MX', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                    }),
-                    time: selectedTime
+            const serviceId = 'service_2bnpyyf';
+            const templateId = 'template_d64bkua';
+            const publicKey = '6S5pjtTY-XsGFQfGR';
+
+            console.log('Sending email with:', { serviceId, templateId, publicKey });
+
+            const templateParams = {
+                'username': formData.name,
+                'email': formData.email,
+                'phone': formData.phone,
+                'date': selectedDate.toLocaleDateString('es-MX', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
                 }),
-            })
+                'time': selectedTime
+            };
 
-            if (response.ok) {
-                setIsSubmitting(false)
-                setShowSuccess(true)
+            await emailjs.send(serviceId, templateId, templateParams, publicKey);
 
-                // Reset form after success
-                setTimeout(() => {
-                    navigate('/')
-                }, 3000)
-            } else {
-                throw new Error('Failed to send email')
-            }
+            setIsSubmitting(false)
+            setShowSuccess(true)
+
+            // Reset form after success
+            setTimeout(() => {
+                navigate('/')
+            }, 3000)
+
         } catch (error) {
             console.error('Error:', error)
             setIsSubmitting(false)
-            alert('Hubo un error al agendar la cita. Por favor intenta nuevamente.')
+            alert('Hubo un error al agendar la cita. Por favor intenta nuevamente. ' + (error.text || error.message))
         }
     }
 

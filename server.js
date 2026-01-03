@@ -4,29 +4,44 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import path from 'path';
 
 // Configure dotenv
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Email configuration
+// Verify env vars
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.error('FATAL ERROR: EMAIL_USER or EMAIL_PASS is missing in .env file');
+} else {
+    console.log('Email configuration loaded for user:', process.env.EMAIL_USER);
+    // console.log('Password length:', process.env.EMAIL_PASS.length);
+}
+
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
     secure: false, // true for 465, false for other ports
     auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        pass: process.env.EMAIL_PASS.replace(/\s+/g, '') // Remove spaces just in case
     }
 });
 
-// Routes
+// Serve static files from the React app
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// API Routes
 app.post('/api/send-email', async (req, res) => {
     const { name, email, phone, date, time } = req.body;
 
@@ -55,7 +70,8 @@ app.post('/api/send-email', async (req, res) => {
     };
 
     try {
-        await transporter.sendMail(mailOptions);
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Email sent:', info.response);
 
         // Optional: Send notification to admin
         const adminMailOptions = {
@@ -81,6 +97,12 @@ app.post('/api/send-email', async (req, res) => {
             details: error.message
         });
     }
+});
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
