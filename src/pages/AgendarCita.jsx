@@ -27,16 +27,40 @@ function AgendarCita() {
 
         setIsSubmitting(true)
 
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1500))
+        try {
+            const response = await fetch('http://localhost:3001/api/send-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ...formData,
+                    date: selectedDate.toLocaleDateString('es-MX', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    }),
+                    time: selectedTime
+                }),
+            })
 
-        setIsSubmitting(false)
-        setShowSuccess(true)
+            if (response.ok) {
+                setIsSubmitting(false)
+                setShowSuccess(true)
 
-        // Reset form after success
-        setTimeout(() => {
-            navigate('/')
-        }, 3000)
+                // Reset form after success
+                setTimeout(() => {
+                    navigate('/')
+                }, 3000)
+            } else {
+                throw new Error('Failed to send email')
+            }
+        } catch (error) {
+            console.error('Error:', error)
+            setIsSubmitting(false)
+            alert('Hubo un error al agendar la cita. Por favor intenta nuevamente.')
+        }
     }
 
     const formatDate = (date) => {
