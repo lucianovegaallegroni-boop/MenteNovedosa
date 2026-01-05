@@ -1,0 +1,221 @@
+.appointment-card {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4) var(--spacing-5);
+    background: var(--color-white);
+    border-left: 4px solid var(--color-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-base);
+    position: relative;
+}
+
+.appointment-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateX(4px);
+}
+
+.appointment-card.confirmed {
+    border-left-color: #10B981;
+}
+
+.appointment-card.pending {
+    border-left-color: #F59E0B;
+}
+
+.appointment-card.cancelled {
+    border-left-color: #EF4444;
+    opacity: 0.7;
+}
+
+.appointment-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: var(--font-size-lg);
+    color: var(--color-white);
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+}
+
+.appointment-avatar.green {
+    background: linear-gradient(135deg, #10B981, #34D399);
+}
+
+.appointment-avatar.orange {
+    background: linear-gradient(135deg, #F59E0B, #FBBF24);
+}
+
+.appointment-avatar.purple {
+    background: linear-gradient(135deg, #8B5CF6, #A78BFA);
+}
+
+.appointment-avatar.pink {
+    background: linear-gradient(135deg, var(--color-primary), #E857A8);
+}
+
+.appointment-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.appointment-name {
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    color: var(--color-gray-800);
+    margin-bottom: var(--spacing-1);
+}
+
+.appointment-type {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--color-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--spacing-2);
+}
+
+.appointment-details {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    flex-wrap: wrap;
+}
+
+.appointment-time {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--font-size-sm);
+    color: var(--color-gray-500);
+}
+
+.appointment-time svg {
+    width: 14px;
+    height: 14px;
+    color: var(--color-gray-400);
+}
+
+.appointment-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    padding: var(--spacing-1) var(--spacing-3);
+    border-radius: var(--radius-full);
+}
+
+.appointment-status.confirmed {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10B981;
+}
+
+.appointment-status.pending {
+    background: rgba(245, 158, 11, 0.1);
+    color: #F59E0B;
+}
+
+.appointment-status.cancelled {
+    background: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
+}
+
+.appointment-status svg {
+    width: 14px;
+    height: 14px;
+}
+
+.appointment-actions {
+    position: absolute;
+    top: var(--spacing-3);
+    right: var(--spacing-3);
+}
+
+.appointment-menu-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-gray-400);
+    transition: all var(--transition-fast);
+}
+
+.appointment-menu-btn:hover {
+    background: var(--color-gray-100);
+    color: var(--color-gray-600);
+}
+
+/* Timeline styles */
+.timeline-hour {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-4);
+    min-height: 80px;
+    padding: var(--spacing-2) 0;
+    position: relative;
+}
+
+.timeline-time {
+    width: 60px;
+    font-size: var(--font-size-sm);
+    color: var(--color-gray-400);
+    font-weight: 500;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: var(--spacing-2);
+}
+
+.timeline-content {
+    flex: 1;
+    position: relative;
+    min-height: 60px;
+    padding-left: var(--spacing-4);
+    border-left: 2px dashed var(--color-gray-200);
+}
+
+.timeline-content.has-appointment {
+    border-left-color: var(--color-primary);
+}
+
+/* Current time indicator */
+.current-time-indicator {
+    position: absolute;
+    left: 60px;
+    right: 0;
+    display: flex;
+    align-items: center;
+    z-index: 10;
+}
+
+.current-time-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--color-primary);
+    border-radius: var(--radius-full);
+    flex-shrink: 0;
+    box-shadow: 0 0 0 3px rgba(193, 47, 141, 0.2);
+}
+
+.current-time-line {
+    flex: 1;
+    height: 2px;
+    background: var(--color-primary);
+}
+
+.current-time-label {
+    background: var(--color-primary);
+    color: var(--color-white);
+    padding: var(--spacing-1) var(--spacing-2);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    margin-left: var(--spacing-2);
+}

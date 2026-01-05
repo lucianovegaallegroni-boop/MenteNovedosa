@@ -2,12 +2,18 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { google } from 'googleapis';
+import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import path from 'path';
 
 // Configure dotenv
 dotenv.config();
+
+// ESM compatibility - define __dirname early
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,31 +24,365 @@ app.use(express.json());
 
 // Email configuration
 // Verify env vars
+let transporter = null;
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error('FATAL ERROR: EMAIL_USER or EMAIL_PASS is missing in .env file');
+    console.warn('⚠️ EMAIL_USER or EMAIL_PASS is missing in .env file - Email functionality disabled');
 } else {
-    console.log('Email configuration loaded for user:', process.env.EMAIL_USER);
-    // console.log('Password length:', process.env.EMAIL_PASS.length);
+    console.log('✅ Email configuration loaded for user:', process.env.EMAIL_USER);
+    transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false, // true for 465, false for other ports
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS.replace(/\s+/g, '') // Remove spaces just in case
+        }
+    });
 }
 
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS.replace(/\s+/g, '') // Remove spaces just in case
+// ============================================
+// GOOGLE CALENDAR SERVICE
+// ============================================
+const SCOPES = ['https://www.googleapis.com/auth/calendar'];
+const TOKEN_PATH = path.join(__dirname, 'token.json');
+
+class GoogleCalendarService {
+    constructor() {
+        this.oauth2Client = null;
+        this.calendar = null;
+        this.isAuthenticated = false;
+    }
+
+    // Inicializar OAuth2 client con variables de entorno
+    async initialize() {
+        const clientId = process.env.GOOGLE_CLIENT_ID;
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+        const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+        if (!clientId || !clientSecret) {
+            console.warn('⚠️ Google Calendar: Credenciales no configuradas en .env');
+            return false;
+        }
+
+        this.oauth2Client = new google.auth.OAuth2(
+            clientId,
+            clientSecret,
+            redirectUri
+        );
+
+        // Intentar cargar token guardado
+        try {
+            const token = JSON.parse(await fs.readFile(TOKEN_PATH, 'utf-8'));
+            this.oauth2Client.setCredentials(token);
+            this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+            this.isAuthenticated = true;
+            console.log('✅ Google Calendar: Autenticación exitosa con token guardado');
+            return true;
+        } catch (err) {
+            // Si hay refresh_token en .env, usarlo
+            const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+            if (refreshToken && refreshToken !== 'tu_refresh_token_aqui') {
+                this.oauth2Client.setCredentials({ refresh_token: refreshToken });
+                this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+                this.isAuthenticated = true;
+                console.log('✅ Google Calendar: Autenticación exitosa con refresh token');
+                return true;
+            }
+            console.log('ℹ️ Google Calendar: Se requiere autenticación. Visita /api/google/auth');
+            return false;
+        }
+    }
+
+    // Generar URL de autenticación
+    getAuthUrl() {
+        if (!this.oauth2Client) return null;
+        return this.oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: SCOPES,
+            prompt: 'consent'
+        });
+    }
+
+    // Procesar callback de autenticación
+    async handleCallback(code) {
+        const { tokens } = await this.oauth2Client.getToken(code);
+        this.oauth2Client.setCredentials(tokens);
+
+        // Guardar token para futuras ejecuciones
+        await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens));
+        console.log('✅ Token guardado en', TOKEN_PATH);
+
+        this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+        this.isAuthenticated = true;
+        return tokens;
+    }
+
+    // Crear evento
+    async crearEvento(eventoData) {
+        if (!this.isAuthenticated) {
+            throw new Error('No autenticado con Google Calendar');
+        }
+
+        const zonaHoraria = eventoData.zonaHoraria || process.env.CALENDAR_TIMEZONE || 'America/Panama';
+
+        const evento = {
+            summary: eventoData.titulo,
+            location: eventoData.ubicacion || '',
+            description: eventoData.descripcion || '',
+            start: {
+                dateTime: eventoData.fechaInicio,
+                timeZone: zonaHoraria,
+            },
+            end: {
+                dateTime: eventoData.fechaFin,
+                timeZone: zonaHoraria,
+            },
+            attendees: eventoData.asistentes || [],
+            reminders: {
+                useDefault: false,
+                overrides: [
+                    { method: 'email', minutes: 24 * 60 },
+                    { method: 'popup', minutes: 30 },
+                ],
+            },
+        };
+
+        // Agregar Google Meet si se solicita
+        if (eventoData.conGoogleMeet) {
+            evento.conferenceData = {
+                createRequest: {
+                    requestId: `meet-${Date.now()}`,
+                    conferenceSolutionKey: { type: 'hangoutsMeet' },
+                },
+            };
+        }
+
+        const response = await this.calendar.events.insert({
+            calendarId: 'primary',
+            resource: evento,
+            conferenceDataVersion: eventoData.conGoogleMeet ? 1 : 0,
+            sendUpdates: 'all',
+        });
+
+        console.log('✅ Evento creado exitosamente!');
+        return response.data;
+    }
+
+    // Listar próximos eventos
+    async listarEventos(cantidad = 10, timeMin = null, timeMax = null) {
+        if (!this.isAuthenticated) {
+            throw new Error('No autenticado con Google Calendar');
+        }
+
+        const params = {
+            calendarId: 'primary',
+            timeMin: timeMin || new Date().toISOString(),
+            maxResults: cantidad,
+            singleEvents: true,
+            orderBy: 'startTime',
+        };
+
+        if (timeMax) {
+            params.timeMax = timeMax;
+        }
+
+        const response = await this.calendar.events.list(params);
+        return response.data.items || [];
+    }
+
+    // Obtener eventos por rango de fechas (para el calendario)
+    async getEventosPorMes(year, month) {
+        if (!this.isAuthenticated) {
+            throw new Error('No autenticado con Google Calendar');
+        }
+
+        const timeMin = new Date(year, month, 1).toISOString();
+        const timeMax = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+
+        const response = await this.calendar.events.list({
+            calendarId: 'primary',
+            timeMin,
+            timeMax,
+            singleEvents: true,
+            orderBy: 'startTime',
+            maxResults: 100,
+        });
+
+        return response.data.items || [];
+    }
+
+    // Actualizar evento
+    async actualizarEvento(eventoId, cambios) {
+        if (!this.isAuthenticated) {
+            throw new Error('No autenticado con Google Calendar');
+        }
+
+        const response = await this.calendar.events.patch({
+            calendarId: 'primary',
+            eventId: eventoId,
+            resource: cambios,
+            sendUpdates: 'all',
+        });
+
+        return response.data;
+    }
+
+    // Eliminar evento
+    async eliminarEvento(eventoId) {
+        if (!this.isAuthenticated) {
+            throw new Error('No autenticado con Google Calendar');
+        }
+
+        await this.calendar.events.delete({
+            calendarId: 'primary',
+            eventId: eventoId,
+            sendUpdates: 'all',
+        });
+    }
+}
+
+// Instancia global del servicio
+const calendarService = new GoogleCalendarService();
+
+// Inicializar servicio de Google Calendar (async)
+calendarService.initialize().catch(console.error);
+
+// ============================================
+// GOOGLE CALENDAR API ROUTES
+// ============================================
+
+// Verificar estado de autenticación
+app.get('/api/google/status', (req, res) => {
+    res.json({
+        authenticated: calendarService.isAuthenticated,
+        configured: !!process.env.GOOGLE_CLIENT_ID
+    });
+});
+
+// Iniciar flujo de autenticación OAuth
+app.get('/api/google/auth', (req, res) => {
+    const authUrl = calendarService.getAuthUrl();
+    if (!authUrl) {
+        return res.status(500).json({ error: 'Google Calendar no configurado' });
+    }
+    res.redirect(authUrl);
+});
+
+// Callback de OAuth
+app.get('/api/google/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+        return res.status(400).json({ error: 'Código de autorización faltante' });
+    }
+
+    try {
+        await calendarService.handleCallback(code);
+        res.send(`
+            <html>
+                <body style="font-family: Arial; text-align: center; padding: 50px;">
+                    <h1>✅ ¡Autenticación exitosa!</h1>
+                    <p>Google Calendar está ahora conectado.</p>
+                    <p>Puedes cerrar esta ventana.</p>
+                    <script>
+                        setTimeout(() => window.close(), 3000);
+                    </script>
+                </body>
+            </html>
+        `);
+    } catch (error) {
+        console.error('Error en callback de Google:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
-// Serve static files from the React app
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Listar eventos
+app.get('/api/calendar/events', async (req, res) => {
+    try {
+        const { cantidad = 10, timeMin, timeMax } = req.query;
+        const eventos = await calendarService.listarEventos(
+            parseInt(cantidad),
+            timeMin,
+            timeMax
+        );
+        res.json(eventos);
+    } catch (error) {
+        // Si no está autenticado, devolver array vacío en lugar de error
+        if (error.message.includes('No autenticado')) {
+            return res.json([]);
+        }
+        console.error('Error al listar eventos:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
+// Obtener eventos por mes (para el calendario)
+app.get('/api/calendar/events/:year/:month', async (req, res) => {
+    try {
+        const { year, month } = req.params;
+        const eventos = await calendarService.getEventosPorMes(
+            parseInt(year),
+            parseInt(month) - 1 // JavaScript meses son 0-indexed
+        );
+        res.json(eventos);
+    } catch (error) {
+        // Si no está autenticado, devolver array vacío en lugar de error
+        if (error.message.includes('No autenticado')) {
+            return res.json([]);
+        }
+        console.error('Error al obtener eventos del mes:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Crear evento
+app.post('/api/calendar/events', async (req, res) => {
+    try {
+        const evento = await calendarService.crearEvento(req.body);
+        res.status(201).json(evento);
+    } catch (error) {
+        console.error('Error al crear evento:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Actualizar evento
+app.patch('/api/calendar/events/:eventId', async (req, res) => {
+    try {
+        const { eventId } = req.params;
+        const evento = await calendarService.actualizarEvento(eventId, req.body);
+        res.json(evento);
+    } catch (error) {
+        console.error('Error al actualizar evento:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Eliminar evento
+app.delete('/api/calendar/events/:eventId', async (req, res) => {
+    try {
+        const { eventId } = req.params;
+        await calendarService.eliminarEvento(eventId);
+        res.json({ message: 'Evento eliminado exitosamente' });
+    } catch (error) {
+        console.error('Error al eliminar evento:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============================================
+// Serve static files from the React app
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // API Routes
 app.post('/api/send-email', async (req, res) => {
+    // Verificar que el email está configurado
+    if (!transporter) {
+        return res.status(503).json({
+            error: 'Email service not configured',
+            details: 'EMAIL_USER and EMAIL_PASS are not set in .env'
+        });
+    }
+
     const { name, email, phone, date, time } = req.body;
 
     const mailOptions = {
@@ -101,7 +441,7 @@ app.post('/api/send-email', async (req, res) => {
 
 // The "catchall" handler: for any request that doesn't
 // match one above, send back React's index.html file.
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 

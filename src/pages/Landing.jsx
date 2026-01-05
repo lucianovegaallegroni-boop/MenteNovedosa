@@ -213,7 +213,7 @@ function Landing() {
                 </div>
             </footer>
 
-            <FloatingButton />
+            {/* <FloatingButton /> */}
         </div>
     )
 }

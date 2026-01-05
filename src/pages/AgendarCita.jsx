@@ -6,6 +6,9 @@ import BookingForm from '../components/BookingForm'
 import './AgendarCita.css'
 import emailjs from '@emailjs/browser'
 
+// URL base del API (cambiar en producción)
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
 function AgendarCita() {
     const navigate = useNavigate()
     const [selectedDate, setSelectedDate] = useState(null)
@@ -18,6 +21,62 @@ function AgendarCita() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showSuccess, setShowSuccess] = useState(false)
 
+    // Función para crear evento en Google Calendar
+    const createCalendarEvent = async () => {
+        try {
+            // Construir fecha/hora en formato ISO
+            const startDateTime = new Date(selectedDate)
+
+            // Parsear la hora seleccionada (formato: "9:00 AM" o "14:00")
+            const timeParts = selectedTime.match(/(\d+):(\d+)\s*(AM|PM)?/i)
+            if (timeParts) {
+                let hours = parseInt(timeParts[1])
+                const minutes = parseInt(timeParts[2])
+                const period = timeParts[3]
+
+                // Convertir a formato 24h si es necesario
+                if (period) {
+                    if (period.toUpperCase() === 'PM' && hours !== 12) {
+                        hours += 12
+                    } else if (period.toUpperCase() === 'AM' && hours === 12) {
+                        hours = 0
+                    }
+                }
+
+                startDateTime.setHours(hours, minutes, 0, 0)
+            }
+
+            // Fin de la cita: 1 hora después
+            const endDateTime = new Date(startDateTime)
+            endDateTime.setHours(endDateTime.getHours() + 1)
+
+            const response = await fetch(`${API_BASE_URL}/api/calendar/events`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    titulo: `Cita - ${formData.name}`,
+                    descripcion: `Cliente: ${formData.name}\nEmail: ${formData.email}\nTeléfono: ${formData.phone}`,
+                    fechaInicio: startDateTime.toISOString(),
+                    fechaFin: endDateTime.toISOString(),
+                    asistentes: [{ email: formData.email }],
+                    conGoogleMeet: true
+                })
+            })
+
+            if (response.ok) {
+                const evento = await response.json()
+                console.log('✅ Evento creado en Google Calendar:', evento.htmlLink)
+                return evento
+            } else {
+                console.log('⚠️ No se pudo crear evento en Google Calendar (servidor no configurado)')
+            }
+        } catch (error) {
+            // Si falla Google Calendar, no bloquear el flujo principal
+            console.log('⚠️ Google Calendar no disponible:', error.message)
+        }
+        return null
+    }
+
     const handleSubmit = async (e) => {
         e.preventDefault()
 
@@ -29,9 +88,9 @@ function AgendarCita() {
         setIsSubmitting(true)
 
         try {
-            const serviceId = 'service_2bnpyyf';
-            const templateId = 'template_d64bkua';
-            const publicKey = '6S5pjtTY-XsGFQfGR';
+            const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+            const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+            const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
             console.log('Sending email with:', { serviceId, templateId, publicKey });
 
@@ -49,6 +108,9 @@ function AgendarCita() {
             };
 
             await emailjs.send(serviceId, templateId, templateParams, publicKey);
+
+            // Crear evento en Google Calendar (no bloquea si falla)
+            await createCalendarEvent()
 
             setIsSubmitting(false)
             setShowSuccess(true)
