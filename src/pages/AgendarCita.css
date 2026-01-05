@@ -89,6 +89,22 @@
     }
 }
 
+.loading-spinner.small {
+    width: 24px;
+    height: 24px;
+    border-width: 3px;
+    margin-bottom: var(--spacing-2);
+}
+
+.slots-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-6);
+    color: var(--color-gray-500);
+}
+
 .loading-overlay p {
     font-size: var(--font-size-base);
     color: var(--color-gray-600);

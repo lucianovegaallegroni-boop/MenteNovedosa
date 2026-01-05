@@ -271,8 +271,6 @@
 .footer {
     background: var(--color-gray-800);
     padding: var(--spacing-8) var(--spacing-4);
-    margin-bottom: 80px;
-    /* Space for floating button */
 }
 
 .footer-text {

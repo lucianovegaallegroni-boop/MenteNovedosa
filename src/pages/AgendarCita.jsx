@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Calendar from '../components/Calendar'
 import TimeSlots from '../components/TimeSlots'
@@ -20,6 +20,91 @@ function AgendarCita() {
     })
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showSuccess, setShowSuccess] = useState(false)
+
+    // Estados para manejo de horarios
+    const [availableSlots, setAvailableSlots] = useState([])
+    const [isLoadingSlots, setIsLoadingSlots] = useState(false)
+
+    // Horarios base de atención (puedes personalizar esto)
+    const BASE_SLOTS = [
+        '09:00 AM', '10:00 AM', '11:00 AM',
+        '12:00 PM', '01:00 PM', '02:00 PM',
+        '03:00 PM', '04:00 PM', '05:00 PM'
+    ]
+
+    // Efecto para cargar disponibilidad cuando cambia la fecha
+    useEffect(() => {
+        if (selectedDate) {
+            checkAvailability(selectedDate)
+        } else {
+            setAvailableSlots([])
+        }
+        setSelectedTime(null) // Resetear hora seleccionada al cambiar fecha
+    }, [selectedDate])
+
+    const checkAvailability = async (date) => {
+        setIsLoadingSlots(true)
+        try {
+            // Definir rango del día seleccionado (00:00 a 23:59)
+            const startOfDay = new Date(date)
+            startOfDay.setHours(0, 0, 0, 0)
+
+            const endOfDay = new Date(date)
+            endOfDay.setHours(23, 59, 59, 999)
+
+            // Consultar eventos del día al backend
+            const response = await fetch(`${API_BASE_URL}/api/calendar/events?timeMin=${startOfDay.toISOString()}&timeMax=${endOfDay.toISOString()}&cantidad=50`)
+
+            if (response.ok) {
+                const events = await response.json()
+
+                // Filtrar horarios ocupados
+                const busyTimes = events.map(event => {
+                    const eventDate = new Date(event.start.dateTime || event.start.date)
+                    return eventDate.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    })
+                })
+
+                // Calcular slots disponibles
+                const available = BASE_SLOTS.filter(slot => {
+                    // Convertir el slot a un objeto Date para comparar rangos
+                    const [time, period] = slot.split(' ')
+                    let [hours, minutes] = time.split(':')
+                    hours = parseInt(hours)
+                    if (period === 'PM' && hours !== 12) hours += 12
+                    else if (period === 'AM' && hours === 12) hours = 0
+
+                    // Asumir que la cita del slot dura 1 hora
+                    const slotStart = new Date(startOfDay)
+                    slotStart.setHours(hours, parseInt(minutes), 0)
+                    const slotEnd = new Date(slotStart)
+                    slotEnd.setHours(slotStart.getHours() + 1)
+
+                    return !events.some(event => {
+                        const eventStart = new Date(event.start.dateTime || event.start.date)
+                        const eventEnd = new Date(event.end.dateTime || event.end.date)
+
+                        // Verificar superposición de intervalos (Overlap)
+                        // (StartA < EndB) && (EndA > StartB)
+                        return (slotStart < eventEnd && slotEnd > eventStart)
+                    })
+                })
+
+                setAvailableSlots(available)
+            } else {
+                console.error('Error al obtener disponibilidade')
+                setAvailableSlots(BASE_SLOTS) // Fallback: mostrar todos si falla
+            }
+        } catch (error) {
+            console.error('Error de conexión:', error)
+            setAvailableSlots(BASE_SLOTS)
+        } finally {
+            setIsLoadingSlots(false)
+        }
+    }
 
     // Función para crear evento en Google Calendar
     const createCalendarEvent = async () => {
@@ -176,10 +261,20 @@ function AgendarCita() {
                 </section>
 
                 {selectedDate && (
-                    <TimeSlots
-                        selectedTime={selectedTime}
-                        onTimeSelect={setSelectedTime}
-                    />
+                    <div className="time-slots-container">
+                        {isLoadingSlots ? (
+                            <div className="slots-loading">
+                                <div className="loading-spinner small"></div>
+                                <p>Verificando disponibilidad...</p>
+                            </div>
+                        ) : (
+                            <TimeSlots
+                                selectedTime={selectedTime}
+                                onTimeSelect={setSelectedTime}
+                                availableTimes={availableSlots}
+                            />
+                        )}
+                    </div>
                 )}
 
                 {selectedDate && selectedTime && (

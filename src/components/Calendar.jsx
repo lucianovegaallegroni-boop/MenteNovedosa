@@ -51,7 +51,8 @@ function Calendar({ selectedDate, onDateSelect }) {
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const checkDate = new Date(year, month, day)
-        return checkDate < today
+        // Si quieres que NO se pueda agendar el mismo día, usa <=
+        return checkDate <= today
     }
 
     const renderDays = () => {
