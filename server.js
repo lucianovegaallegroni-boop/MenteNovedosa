@@ -28,7 +28,7 @@ let transporter = null;
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn('⚠️ EMAIL_USER or EMAIL_PASS is missing in .env file - Email functionality disabled');
 } else {
-    console.log('✅ Email configuration loaded for user:', process.env.EMAIL_USER);
+    // console.log('✅ Email configuration loaded for user:', process.env.EMAIL_USER);
     transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
         port: 587,
@@ -70,27 +70,33 @@ class GoogleCalendarService {
             redirectUri
         );
 
-        // Intentar cargar token guardado
+        // 1. Intentar usar Refresh Token de variable de entorno (Prioridad para Vercel)
+        if (process.env.GOOGLE_REFRESH_TOKEN) {
+            try {
+                this.oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+                this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+                this.isAuthenticated = true;
+                console.log('✅ Google Calendar: Autenticación exitosa con GOOGLE_REFRESH_TOKEN');
+                return true;
+            } catch (error) {
+                console.error('❌ Error usando GOOGLE_REFRESH_TOKEN:', error);
+            }
+        }
+
+        // 2. Intentar cargar token guardado localmente (Solo entorno local)
         try {
             const token = JSON.parse(await fs.readFile(TOKEN_PATH, 'utf-8'));
             this.oauth2Client.setCredentials(token);
             this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
             this.isAuthenticated = true;
-            console.log('✅ Google Calendar: Autenticación exitosa con token guardado');
+            console.log('✅ Google Calendar: Autenticación exitosa con token local file');
             return true;
         } catch (err) {
-            // Si hay refresh_token en .env, usarlo
-            const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-            if (refreshToken && refreshToken !== 'tu_refresh_token_aqui') {
-                this.oauth2Client.setCredentials({ refresh_token: refreshToken });
-                this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
-                this.isAuthenticated = true;
-                console.log('✅ Google Calendar: Autenticación exitosa con refresh token');
-                return true;
-            }
-            console.log('ℹ️ Google Calendar: Se requiere autenticación. Visita /api/google/auth');
-            return false;
+            // Ignorar error si no existe el archivo
         }
+
+        console.log('ℹ️ Google Calendar: Se requiere autenticación. Visita /api/google/auth');
+        return false;
     }
 
     // Generar URL de autenticación
@@ -109,8 +115,21 @@ class GoogleCalendarService {
         this.oauth2Client.setCredentials(tokens);
 
         // Guardar token para futuras ejecuciones
-        await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens));
-        console.log('✅ Token guardado en', TOKEN_PATH);
+        // En Vercel esto fallará silenciosamente o se ignorará, pero es útil en local
+        try {
+            await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens));
+            console.log('✅ Token guardado en', TOKEN_PATH);
+        } catch (error) {
+            console.warn('⚠️ No se pudo guardar el token en disco (normal en Vercel):', error.message);
+        }
+
+        // Log para que el usuario pueda copiar el refresh token
+        if (tokens.refresh_token) {
+            console.log('\n==================================================================');
+            console.log('🔑 IMPORTANTE: GUARDA ESTE REFRESH TOKEN EN TUS VARIABLES DE ENTORNO DE VERCEL:');
+            console.log('GOOGLE_REFRESH_TOKEN=' + tokens.refresh_token);
+            console.log('==================================================================\n');
+        }
 
         this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
         this.isAuthenticated = true;
@@ -282,9 +301,10 @@ app.get('/api/google/callback', async (req, res) => {
                 <body style="font-family: Arial; text-align: center; padding: 50px;">
                     <h1>✅ ¡Autenticación exitosa!</h1>
                     <p>Google Calendar está ahora conectado.</p>
+                    <p>Revisa la consola del servidor para ver el Refresh Token si lo necesitas en Vercel.</p>
                     <p>Puedes cerrar esta ventana.</p>
                     <script>
-                        setTimeout(() => window.close(), 3000);
+                        setTimeout(() => window.close(), 5000);
                     </script>
                 </body>
             </html>
@@ -371,7 +391,16 @@ app.delete('/api/calendar/events/:eventId', async (req, res) => {
 
 // ============================================
 // Serve static files from the React app
-app.use(express.static(path.join(__dirname, 'dist')));
+// ============================================
+// In Vercel, static files are handled by Vercel configuration/Output, but we keep this for local production preview if needed
+if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
+    app.use(express.static(path.join(__dirname, 'dist')));
+
+    // The "catchall" handler
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
+}
 
 // API Routes
 app.post('/api/send-email', async (req, res) => {
@@ -439,12 +468,13 @@ app.post('/api/send-email', async (req, res) => {
     }
 });
 
-// The "catchall" handler: for any request that doesn't
-// match one above, send back React's index.html file.
-app.get('/{*splat}', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+// Only listen if run directly (Local development)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
+
+// Export for Vercel
+export default app;
