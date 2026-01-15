@@ -470,7 +470,9 @@ app.post('/api/send-email', async (req, res) => {
 
 
 // Only listen if run directly (Local development)
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+const currentFile = fileURLToPath(import.meta.url).replace(/\\/g, '/');
+const executedFile = (process.argv[1] || '').replace(/\\/g, '/');
+if (currentFile === executedFile || executedFile.endsWith('server.js')) {
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });

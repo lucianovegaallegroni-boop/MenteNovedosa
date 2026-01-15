@@ -6,8 +6,9 @@ import BookingForm from '../components/BookingForm'
 import './AgendarCita.css'
 import emailjs from '@emailjs/browser'
 
-// URL base del API (cambiar en producción)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+// En desarrollo: el proxy de Vite redirige /api/* a localhost:3001
+// En producción (Vercel): /api/* va a las serverless functions
+const API_BASE_URL = ''
 
 function AgendarCita() {
     const navigate = useNavigate()

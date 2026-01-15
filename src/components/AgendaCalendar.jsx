@@ -7,8 +7,9 @@ const MONTHS = [
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ]
 
-// URL base del API (cambiar en producción)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+// En desarrollo: el proxy de Vite redirige /api/* a localhost:3001
+// En producción (Vercel): /api/* va a las serverless functions
+const API_BASE_URL = ''
 
 function AgendaCalendar({ selectedDate, onDateSelect, appointmentDates = [], onEventsLoaded }) {
     const [currentDate, setCurrentDate] = useState(new Date())
