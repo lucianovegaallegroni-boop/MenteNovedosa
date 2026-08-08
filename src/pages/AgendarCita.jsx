@@ -191,17 +191,43 @@ function AgendarCita() {
 
             console.log('Sending email with:', { serviceId, templateId, publicKey });
 
+            const phoneValue = String(formData.phone || '').trim();
+            const nameValue = String(formData.name || '').trim();
+            const emailValue = String(formData.email || '').trim();
+            const formattedDate = selectedDate.toLocaleDateString('es-MX', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
             const templateParams = {
-                'username': formData.name,
-                'email': formData.email,
-                'phone': formData.phone,
-                'date': selectedDate.toLocaleDateString('es-MX', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                }),
-                'time': selectedTime
+                // Name aliases
+                'username': nameValue,
+                'user_name': nameValue,
+                'name': nameValue,
+                'nombre': nameValue,
+
+                // Email aliases
+                'email': emailValue,
+                'user_email': emailValue,
+                'reply_to': emailValue,
+
+                // Phone aliases (ensures complete string is captured regardless of template tag name)
+                'phone': phoneValue,
+                'user_phone': phoneValue,
+                'phone_number': phoneValue,
+                'user_phone_number': phoneValue,
+                'telefono': phoneValue,
+                'mobile': phoneValue,
+                'user_mobile': phoneValue,
+                'contact_phone': phoneValue,
+
+                // Date & Time aliases
+                'date': formattedDate,
+                'fecha': formattedDate,
+                'time': selectedTime,
+                'hora': selectedTime
             };
 
             await emailjs.send(serviceId, templateId, templateParams, publicKey);
