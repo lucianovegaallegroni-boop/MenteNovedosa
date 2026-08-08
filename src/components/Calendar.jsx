@@ -55,6 +55,13 @@ function Calendar({ selectedDate, onDateSelect }) {
         return checkDate <= today
     }
 
+    // Solo se permiten citas los Martes (2), Jueves (4) y Viernes (5)
+    const isUnavailableDay = (day) => {
+        const date = new Date(year, month, day)
+        const dayOfWeek = date.getDay()
+        return dayOfWeek !== 2 && dayOfWeek !== 4 && dayOfWeek !== 5
+    }
+
     const renderDays = () => {
         const days = []
 
@@ -66,12 +73,14 @@ function Calendar({ selectedDate, onDateSelect }) {
         // Actual days
         for (let day = 1; day <= daysInMonth; day++) {
             const past = isPast(day)
+            const unavailable = isUnavailableDay(day)
+            const disabled = past || unavailable
             days.push(
                 <button
                     key={day}
-                    className={`calendar-day ${isSelected(day) ? 'selected' : ''} ${isToday(day) ? 'today' : ''} ${past ? 'past' : ''}`}
-                    onClick={() => !past && handleDateClick(day)}
-                    disabled={past}
+                    className={`calendar-day ${isSelected(day) ? 'selected' : ''} ${isToday(day) ? 'today' : ''} ${disabled ? 'past' : ''}`}
+                    onClick={() => !disabled && handleDateClick(day)}
+                    disabled={disabled}
                 >
                     {day}
                 </button>

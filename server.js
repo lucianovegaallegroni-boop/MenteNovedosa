@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
@@ -70,16 +70,33 @@ class GoogleCalendarService {
             redirectUri
         );
 
-        // 1. Intentar usar Refresh Token de variable de entorno (Prioridad para Vercel)
-        if (process.env.GOOGLE_REFRESH_TOKEN) {
+        // Método interno para verificar que el token funcione con una llamada real
+        const verifyToken = async (source) => {
             try {
-                this.oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
                 this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+                // Hacer una llamada de prueba para verificar que el token es válido
+                await this.calendar.events.list({
+                    calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+                    maxResults: 1,
+                    timeMin: new Date().toISOString(),
+                });
                 this.isAuthenticated = true;
-                console.log('✅ Google Calendar: Autenticación exitosa con GOOGLE_REFRESH_TOKEN');
+                console.log(`✅ Google Calendar: Autenticación verificada con ${source}`);
                 return true;
             } catch (error) {
-                console.error('❌ Error usando GOOGLE_REFRESH_TOKEN:', error);
+                const errorMsg = error?.response?.data?.error || error.message || 'Unknown error';
+                console.error(`❌ Google Calendar: Token de ${source} inválido (${errorMsg}). Re-autentícate en /api/google/auth`);
+                this.isAuthenticated = false;
+                this.calendar = null;
+                return false;
+            }
+        };
+
+        // 1. Intentar usar Refresh Token de variable de entorno (Prioridad para Vercel)
+        if (process.env.GOOGLE_REFRESH_TOKEN) {
+            this.oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+            if (await verifyToken('GOOGLE_REFRESH_TOKEN')) {
+                return true;
             }
         }
 
@@ -87,10 +104,9 @@ class GoogleCalendarService {
         try {
             const token = JSON.parse(await fs.readFile(TOKEN_PATH, 'utf-8'));
             this.oauth2Client.setCredentials(token);
-            this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
-            this.isAuthenticated = true;
-            console.log('✅ Google Calendar: Autenticación exitosa con token local file');
-            return true;
+            if (await verifyToken('token local')) {
+                return true;
+            }
         } catch (err) {
             // Ignorar error si no existe el archivo
         }
@@ -177,7 +193,7 @@ class GoogleCalendarService {
         }
 
         const response = await this.calendar.events.insert({
-            calendarId: 'primary',
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
             resource: evento,
             conferenceDataVersion: eventoData.conGoogleMeet ? 1 : 0,
             sendUpdates: 'all',
@@ -194,7 +210,7 @@ class GoogleCalendarService {
         }
 
         const params = {
-            calendarId: 'primary',
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
             timeMin: timeMin || new Date().toISOString(),
             maxResults: cantidad,
             singleEvents: true,
@@ -219,7 +235,7 @@ class GoogleCalendarService {
         const timeMax = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
 
         const response = await this.calendar.events.list({
-            calendarId: 'primary',
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
             timeMin,
             timeMax,
             singleEvents: true,
@@ -237,7 +253,7 @@ class GoogleCalendarService {
         }
 
         const response = await this.calendar.events.patch({
-            calendarId: 'primary',
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
             eventId: eventoId,
             resource: cambios,
             sendUpdates: 'all',
@@ -253,7 +269,7 @@ class GoogleCalendarService {
         }
 
         await this.calendar.events.delete({
-            calendarId: 'primary',
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
             eventId: eventoId,
             sendUpdates: 'all',
         });

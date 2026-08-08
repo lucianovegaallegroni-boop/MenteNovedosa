@@ -26,12 +26,22 @@ function AgendarCita() {
     const [availableSlots, setAvailableSlots] = useState([])
     const [isLoadingSlots, setIsLoadingSlots] = useState(false)
 
-    // Horarios base de atención (puedes personalizar esto)
-    const BASE_SLOTS = [
-        '09:00 AM', '10:00 AM', '11:00 AM',
-        '12:00 PM', '01:00 PM', '02:00 PM',
-        '03:00 PM', '04:00 PM', '05:00 PM'
-    ]
+    // Horarios de atención según el día de la semana
+    // Martes (2) y Jueves (4): 5, 6, 7 PM
+    // Viernes (5): 4, 5, 6 PM
+    const getSlotsForDay = (date) => {
+        if (!date) return []
+        const dayOfWeek = date.getDay() // 0=Dom, 1=Lun, 2=Mar, 3=Mie, 4=Jue, 5=Vie, 6=Sab
+        switch (dayOfWeek) {
+            case 2: // Martes
+            case 4: // Jueves
+                return ['05:00 PM', '06:00 PM', '07:00 PM']
+            case 5: // Viernes
+                return ['04:00 PM', '05:00 PM', '06:00 PM']
+            default:
+                return [] // No hay disponibilidad
+        }
+    }
 
     // Efecto para cargar disponibilidad cuando cambia la fecha
     useEffect(() => {
@@ -69,8 +79,9 @@ function AgendarCita() {
                     })
                 })
 
-                // Calcular slots disponibles
-                const available = BASE_SLOTS.filter(slot => {
+                // Calcular slots disponibles según el día
+                const daySlots = getSlotsForDay(date)
+                const available = daySlots.filter(slot => {
                     // Convertir el slot a un objeto Date para comparar rangos
                     const [time, period] = slot.split(' ')
                     let [hours, minutes] = time.split(':')
@@ -96,12 +107,12 @@ function AgendarCita() {
 
                 setAvailableSlots(available)
             } else {
-                console.error('Error al obtener disponibilidade')
-                setAvailableSlots(BASE_SLOTS) // Fallback: mostrar todos si falla
+                console.error('Error al obtener disponibilidad')
+                setAvailableSlots(getSlotsForDay(date)) // Fallback: mostrar todos del día si falla
             }
         } catch (error) {
             console.error('Error de conexión:', error)
-            setAvailableSlots(BASE_SLOTS)
+            setAvailableSlots(getSlotsForDay(date))
         } finally {
             setIsLoadingSlots(false)
         }
