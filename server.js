@@ -307,27 +307,39 @@ app.get('/api/google/auth', (req, res) => {
 app.get('/api/google/callback', async (req, res) => {
     const { code } = req.query;
     if (!code) {
-        return res.status(400).json({ error: 'Código de autorización faltante' });
+        return res.status(400).json({
+            error: 'Código de autorización faltante',
+            mensaje: 'Esta URL es un callback de respuesta de Google OAuth. Para iniciar la autenticación debes ingresar primero a /api/google/auth'
+        });
     }
 
     try {
-        await calendarService.handleCallback(code);
+        const tokens = await calendarService.handleCallback(code);
+        const refreshToken = tokens?.refresh_token || '';
+
         res.send(`
             <html>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1>✅ ¡Autenticación exitosa!</h1>
-                    <p>Google Calendar está ahora conectado.</p>
-                    <p>Revisa la consola del servidor para ver el Refresh Token si lo necesitas en Vercel.</p>
-                    <p>Puedes cerrar esta ventana.</p>
-                    <script>
-                        setTimeout(() => window.close(), 5000);
-                    </script>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 40px; background-color: #f9fafb; color: #1f2937;">
+                    <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                        <h1 style="color: #10b981; margin-bottom: 10px;">✅ ¡Autenticación Exitosa!</h1>
+                        <p style="font-size: 16px; color: #4b5563;">Google Calendar está ahora conectado con tu aplicación.</p>
+                        ${refreshToken ? `
+                            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; word-break: break-all; text-align: left;">
+                                <p style="margin-top: 0; font-weight: bold; color: #374151;">🔑 GOOGLE_REFRESH_TOKEN (Copia esto a Vercel si estás en producción):</p>
+                                <code style="background: #e5e7eb; padding: 8px 12px; border-radius: 4px; display: block; font-family: monospace; font-size: 13px; margin-top: 5px;">${refreshToken}</code>
+                            </div>
+                        ` : '<p style="color: #6b7280; font-size: 14px;">(El token de refresco ya estaba previamente almacenado)</p>'}
+                        <p style="font-size: 14px; color: #9ca3af;">Puedes cerrar esta ventana.</p>
+                    </div>
                 </body>
             </html>
         `);
     } catch (error) {
         console.error('Error en callback de Google:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            error: error.message,
+            ayuda: 'Verifica que la URL de redirección en Vercel y Google Cloud Console coincidan exactamente (ej: https://mente-novedosa.vercel.app/api/google/callback).'
+        });
     }
 });
 
