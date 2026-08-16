@@ -51,6 +51,7 @@ class GoogleCalendarService {
         this.oauth2Client = null;
         this.calendar = null;
         this.isAuthenticated = false;
+        this.lastError = null;
     }
 
     // Inicializar OAuth2 client con variables de entorno
@@ -60,6 +61,7 @@ class GoogleCalendarService {
         const redirectUri = process.env.GOOGLE_REDIRECT_URI;
 
         if (!clientId || !clientSecret) {
+            this.lastError = 'GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET no configurados';
             console.warn('⚠️ Google Calendar: Credenciales no configuradas en .env');
             return false;
         }
@@ -81,11 +83,13 @@ class GoogleCalendarService {
                     timeMin: new Date().toISOString(),
                 });
                 this.isAuthenticated = true;
+                this.lastError = null;
                 console.log(`✅ Google Calendar: Autenticación verificada con ${source}`);
                 return true;
             } catch (error) {
-                const errorMsg = error?.response?.data?.error || error.message || 'Unknown error';
-                console.error(`❌ Google Calendar: Token de ${source} inválido (${errorMsg}). Re-autentícate en /api/google/auth`);
+                const errorMsg = error?.response?.data?.error_description || error?.response?.data?.error || error.message || 'Unknown error';
+                console.error(`❌ Google Calendar: Token de ${source} inválido (${JSON.stringify(errorMsg)}). Re-autentícate en /api/google/auth`);
+                this.lastError = `${source}: ${typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg}`;
                 this.isAuthenticated = false;
                 this.calendar = null;
                 return false;
@@ -279,8 +283,21 @@ class GoogleCalendarService {
 // Instancia global del servicio
 const calendarService = new GoogleCalendarService();
 
-// Inicializar servicio de Google Calendar (async)
-calendarService.initialize().catch(console.error);
+let initPromise = null;
+const ensureCalendarInitialized = async (req, res, next) => {
+    if (!calendarService.isAuthenticated) {
+        if (!initPromise) {
+            initPromise = calendarService.initialize().catch(console.error).finally(() => {
+                initPromise = null;
+            });
+        }
+        await initPromise;
+    }
+    next();
+};
+
+// Middleware para asegurar inicialización en rutas de API de Calendar y Status
+app.use(['/api/google/status', '/api/calendar'], ensureCalendarInitialized);
 
 // ============================================
 // GOOGLE CALENDAR API ROUTES
@@ -290,7 +307,9 @@ calendarService.initialize().catch(console.error);
 app.get('/api/google/status', (req, res) => {
     res.json({
         authenticated: calendarService.isAuthenticated,
-        configured: !!process.env.GOOGLE_CLIENT_ID
+        configured: !!process.env.GOOGLE_CLIENT_ID,
+        hasRefreshToken: !!process.env.GOOGLE_REFRESH_TOKEN,
+        lastError: calendarService.lastError
     });
 });
 
@@ -388,6 +407,9 @@ app.post('/api/calendar/events', async (req, res) => {
         const evento = await calendarService.crearEvento(req.body);
         res.status(201).json(evento);
     } catch (error) {
+        if (error.message.includes('No autenticado')) {
+            return res.status(401).json({ error: error.message, ayuda: 'Visita /api/google/auth para autenticarte' });
+        }
         console.error('Error al crear evento:', error);
         res.status(500).json({ error: error.message });
     }
