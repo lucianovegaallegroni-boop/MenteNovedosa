@@ -28,7 +28,7 @@ function AgendarCita() {
 
     // Horarios de atención según el día de la semana
     // Martes (2) y Jueves (4): 5, 6, 7 PM
-    // Viernes (5): 4, 5, 6 PM
+    // Viernes (5): 4, 5 PM
     const getSlotsForDay = (date) => {
         if (!date) return []
         const dayOfWeek = date.getDay() // 0=Dom, 1=Lun, 2=Mar, 3=Mie, 4=Jue, 5=Vie, 6=Sab
@@ -37,7 +37,7 @@ function AgendarCita() {
             case 4: // Jueves
                 return ['05:00 PM', '06:00 PM', '07:00 PM']
             case 5: // Viernes
-                return ['04:00 PM', '05:00 PM', '06:00 PM']
+                return ['04:00 PM', '05:00 PM']
             default:
                 return [] // No hay disponibilidad
         }
